@@ -1,0 +1,58 @@
+name: youpass-share
+
+services:
+  api:
+    build:
+      context: .
+      target: runtime
+    environment:
+      APP_ENV: development
+      HTTP_ADDR: ":8080"
+      DATABASE_URL: postgres://youpass:youpass@postgres:5432/youpass?sslmode=disable
+      REDIS_ADDR: redis:6379
+      JWT_SECRET: ${JWT_SECRET:-dev-only-secret-change-me-0123456789abcdef}
+      JWT_TTL: 15m
+      SHARE_BASE_URL: http://localhost:${API_PORT:-8080}/s/
+      FLUSH_INTERVAL: ${FLUSH_INTERVAL:-5s}
+      VIEW_WORKERS: 4
+      RATE_LIMIT_PER_MIN: ${RATE_LIMIT_PER_MIN:-60}
+    ports:
+      - "${API_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    stop_grace_period: 15s # đủ thời gian drain buffer view + flush lần cuối
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: youpass
+      POSTGRES_PASSWORD: youpass
+      POSTGRES_DB: youpass
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U youpass -d youpass"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:
